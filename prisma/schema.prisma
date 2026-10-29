@@ -1,0 +1,477 @@
+// =============================================================
+// Tienda del Monasterio — Esquema de base de datos
+// PostgreSQL + Prisma
+//
+// Convenciones:
+//  - Modelos y campos en camelCase (código); tablas y columnas en snake_case (BD).
+//  - Montos en USD: Decimal(12,2). Montos en Bs: Decimal(14,2). Tasas: Decimal(14,4).
+//  - Nada se borra: se desactiva (activo = false) o se anula (estado = ANULADA).
+//  - Prisma no soporta CHECK: las restricciones adicionales están en checks.sql.
+//
+// PENDIENTE: traspasos de material (significado sin definir).
+//  `ubicaciones` existe con una sola fila ("Tienda") para poder agregarlos
+//  más adelante sin migrar datos.
+//
+// SUPUESTOS (revisar):
+//  - N° de control interno: AAAA + correlativo de 4 dígitos, reinicia cada año.
+//  - Tasa del día cargada a mano (fuente BCV o MANUAL).
+//  - La diferencia pagado - facturado se guarda tal cual, sin interpretarla.
+//  - Costo de ingreso opcional. Sin IVA. Variantes = productos separados.
+// =============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -------------------------------------------------------------
+// ENUMS
+// -------------------------------------------------------------
+
+enum Rol {
+  ADMIN
+  VENDEDOR
+}
+
+enum TipoDocumento {
+  V
+  E
+  J
+  G
+  P
+}
+
+enum TipoMovimiento {
+  INGRESO
+  VENTA
+  ANULACION_VENTA
+  REGALO
+  AJUSTE
+  // PENDIENTE: TRASPASO_SALIDA, TRASPASO_ENTRADA
+}
+
+enum EstadoVenta {
+  ACTIVA
+  ANULADA
+}
+
+enum MetodoPago {
+  TARJETA
+  PAGO_MOVIL
+  TRANSFERENCIA
+  EFECTIVO_BS
+  EFECTIVO_USD
+  // "MIXTA" no es un método: es una venta con más de un pago.
+}
+
+enum Moneda {
+  BS
+  USD
+}
+
+enum TipoCuenta {
+  JURIDICA
+  NATURAL
+}
+
+enum FuenteTasa {
+  BCV
+  MANUAL
+}
+
+enum AccionAuditoria {
+  CREAR
+  ACTUALIZAR
+  ANULAR
+  DESACTIVAR
+}
+
+// -------------------------------------------------------------
+// SEGURIDAD
+// -------------------------------------------------------------
+
+model Usuario {
+  id           Int      @id @default(autoincrement())
+  nombre       String   @db.VarChar(100)
+  usuario      String   @unique @db.VarChar(50)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  rol          Rol      @default(VENDEDOR)
+  activo       Boolean  @default(true)
+  creadoEn     DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  historialPrecios HistorialPrecio[]
+  movimientos      MovimientoInventario[]
+  ingresos         Ingreso[]
+  regalos          Regalo[]
+  tasasCambio      TasaCambio[]
+  ventas           Venta[]                @relation("VentaVendedor")
+  ventasAnuladas   Venta[]                @relation("VentaAnulador")
+  auditorias       Auditoria[]
+
+  @@map("usuarios")
+}
+
+// -------------------------------------------------------------
+// CATÁLOGO
+// -------------------------------------------------------------
+
+/// Dos niveles: categoría principal (padreId = null) y subcategoría.
+/// Ej.: Alimentos > Pasta, Salsas, Café, Galletas.
+model Categoria {
+  id            Int     @id @default(autoincrement())
+  nombre        String  @db.VarChar(80)
+  padreId       Int?    @map("padre_id")
+  /// Prefijo sugerido para los códigos: PST, SLS, CAF, GLL...
+  prefijoCodigo String? @map("prefijo_codigo") @db.VarChar(10)
+  orden         Int     @default(0)
+  activo        Boolean @default(true)
+
+  padre     Categoria?  @relation("Subcategorias", fields: [padreId], references: [id])
+  hijas     Categoria[] @relation("Subcategorias")
+  productos Producto[]
+
+  @@unique([padreId, nombre])
+  @@map("categorias")
+}
+
+model Producto {
+  id            Int      @id @default(autoincrement())
+  /// Ej.: PST-HUE, SLS-TOMG, CAF-01
+  codigo        String   @unique @db.VarChar(20)
+  nombre        String   @db.VarChar(150)
+  descripcion   String?
+  categoriaId   Int      @map("categoria_id")
+  /// Precio vigente. Los cambios quedan en historial_precios.
+  precioUsd     Decimal  @map("precio_usd") @db.Decimal(12, 2)
+  imagenUrl     String?  @map("imagen_url") @db.VarChar(255)
+  stockMinimo   Int?     @map("stock_minimo")
+  /// Productos de temporada (p. ej. Galletas de Navidad) se desactivan.
+  activo        Boolean  @default(true)
+  creadoEn      DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn DateTime @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+
+  categoria        Categoria              @relation(fields: [categoriaId], references: [id])
+  historialPrecios HistorialPrecio[]
+  existencias      Existencia[]
+  movimientos      MovimientoInventario[]
+  ingresoDetalles  IngresoDetalle[]
+  regaloDetalles   RegaloDetalle[]
+  ventaDetalles    VentaDetalle[]
+
+  @@index([categoriaId])
+  @@index([nombre])
+  @@map("productos")
+}
+
+model HistorialPrecio {
+  id             Int      @id @default(autoincrement())
+  productoId     Int      @map("producto_id")
+  precioAnterior Decimal  @map("precio_anterior") @db.Decimal(12, 2)
+  precioNuevo    Decimal  @map("precio_nuevo") @db.Decimal(12, 2)
+  fecha          DateTime @default(now()) @db.Timestamptz(6)
+  usuarioId      Int      @map("usuario_id")
+
+  producto Producto @relation(fields: [productoId], references: [id])
+  usuario  Usuario  @relation(fields: [usuarioId], references: [id])
+
+  @@index([productoId, fecha])
+  @@map("historial_precios")
+}
+
+// -------------------------------------------------------------
+// INVENTARIO
+// -------------------------------------------------------------
+
+/// Por ahora una sola fila: "Tienda".
+model Ubicacion {
+  id     Int     @id @default(autoincrement())
+  nombre String  @unique @db.VarChar(80)
+  activo Boolean @default(true)
+
+  existencias Existencia[]
+  movimientos MovimientoInventario[]
+  ingresos    Ingreso[]
+  regalos     Regalo[]
+  ventas      Venta[]
+
+  @@map("ubicaciones")
+}
+
+/// Stock actual. Se actualiza en la MISMA transacción que cada movimiento.
+model Existencia {
+  productoId  Int @map("producto_id")
+  ubicacionId Int @map("ubicacion_id")
+  cantidad    Int @default(0)
+
+  producto  Producto  @relation(fields: [productoId], references: [id])
+  ubicacion Ubicacion @relation(fields: [ubicacionId], references: [id])
+
+  @@id([productoId, ubicacionId])
+  @@map("existencias")
+}
+
+/// Kardex: fuente de verdad del inventario.
+/// Cada movimiento apunta como máximo a un documento de origen.
+/// Los AJUSTE no tienen documento y requieren nota.
+model MovimientoInventario {
+  id              BigInt         @id @default(autoincrement())
+  productoId      Int            @map("producto_id")
+  ubicacionId     Int            @map("ubicacion_id")
+  tipo            TipoMovimiento
+  /// Positiva = entra, negativa = sale.
+  cantidad        Int
+  saldoResultante Int            @map("saldo_resultante")
+  ventaId         Int?           @map("venta_id")
+  ingresoId       Int?           @map("ingreso_id")
+  regaloId        Int?           @map("regalo_id")
+  fecha           DateTime       @default(now()) @db.Timestamptz(6)
+  usuarioId       Int            @map("usuario_id")
+  nota            String?
+
+  producto  Producto  @relation(fields: [productoId], references: [id])
+  ubicacion Ubicacion @relation(fields: [ubicacionId], references: [id])
+  venta     Venta?    @relation(fields: [ventaId], references: [id])
+  ingreso   Ingreso?  @relation(fields: [ingresoId], references: [id])
+  regalo    Regalo?   @relation(fields: [regaloId], references: [id])
+  usuario   Usuario   @relation(fields: [usuarioId], references: [id])
+
+  @@index([productoId, fecha])
+  @@index([fecha])
+  @@index([ventaId])
+  @@index([ingresoId])
+  @@index([regaloId])
+  @@map("movimientos_inventario")
+}
+
+/// Pestaña "Ingreso de material".
+model Ingreso {
+  id          Int      @id @default(autoincrement())
+  fecha       DateTime @default(now()) @db.Timestamptz(6)
+  ubicacionId Int      @map("ubicacion_id")
+  proveedor   String?  @db.VarChar(150)
+  nota        String?
+  usuarioId   Int      @map("usuario_id")
+
+  ubicacion   Ubicacion              @relation(fields: [ubicacionId], references: [id])
+  usuario     Usuario                @relation(fields: [usuarioId], references: [id])
+  detalles    IngresoDetalle[]
+  movimientos MovimientoInventario[]
+
+  @@index([fecha])
+  @@map("ingresos")
+}
+
+model IngresoDetalle {
+  id           Int      @id @default(autoincrement())
+  ingresoId    Int      @map("ingreso_id")
+  productoId   Int      @map("producto_id")
+  cantidad     Int
+  /// SUPUESTO: opcional. Solo necesario si se quiere calcular ganancia.
+  costoUnitUsd Decimal? @map("costo_unit_usd") @db.Decimal(12, 2)
+
+  ingreso  Ingreso  @relation(fields: [ingresoId], references: [id])
+  producto Producto @relation(fields: [productoId], references: [id])
+
+  @@index([ingresoId])
+  @@index([productoId])
+  @@map("ingreso_detalle")
+}
+
+/// Pestaña "Regalos".
+model Regalo {
+  id            Int      @id @default(autoincrement())
+  fecha         DateTime @default(now()) @db.Timestamptz(6)
+  ubicacionId   Int      @map("ubicacion_id")
+  beneficiario  String   @db.VarChar(150)
+  motivo        String
+  autorizadoPor String?  @map("autorizado_por") @db.VarChar(100)
+  usuarioId     Int      @map("usuario_id")
+
+  ubicacion   Ubicacion              @relation(fields: [ubicacionId], references: [id])
+  usuario     Usuario                @relation(fields: [usuarioId], references: [id])
+  detalles    RegaloDetalle[]
+  movimientos MovimientoInventario[]
+
+  @@index([fecha])
+  @@map("regalos")
+}
+
+model RegaloDetalle {
+  id          Int     @id @default(autoincrement())
+  regaloId    Int     @map("regalo_id")
+  productoId  Int     @map("producto_id")
+  cantidad    Int
+  /// Precio del producto al momento del regalo, para reportar el valor regalado.
+  valorRefUsd Decimal @map("valor_ref_usd") @db.Decimal(12, 2)
+
+  regalo   Regalo   @relation(fields: [regaloId], references: [id])
+  producto Producto @relation(fields: [productoId], references: [id])
+
+  @@index([regaloId])
+  @@index([productoId])
+  @@map("regalo_detalle")
+}
+
+// -------------------------------------------------------------
+// VENTAS
+// -------------------------------------------------------------
+
+model TasaCambio {
+  fecha     DateTime   @id @db.Date
+  bsPorUsd  Decimal    @map("bs_por_usd") @db.Decimal(14, 4)
+  fuente    FuenteTasa @default(MANUAL)
+  usuarioId Int        @map("usuario_id")
+  creadoEn  DateTime   @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+
+  @@map("tasas_cambio")
+}
+
+/// Cliente "CONSUMIDOR FINAL" = sin documento (ambos campos null).
+model Cliente {
+  id              Int            @id @default(autoincrement())
+  tipoDocumento   TipoDocumento? @map("tipo_documento")
+  numeroDocumento String?        @map("numero_documento") @db.VarChar(15)
+  nombre          String         @db.VarChar(150)
+  telefono        String?        @db.VarChar(20)
+  direccion       String?        @db.VarChar(200)
+  ciudad          String?        @db.VarChar(80)
+  /// Estado geográfico (Lara, Portuguesa...), no estado de registro.
+  estado          String?        @db.VarChar(50)
+  creadoEn        DateTime       @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  ventas Venta[]
+
+  @@unique([tipoDocumento, numeroDocumento])
+  @@index([nombre])
+  @@map("clientes")
+}
+
+model Venta {
+  id              Int         @id @default(autoincrement())
+  /// AAAA + correlativo de 4 dígitos (ej. 20260001). Ver Correlativo.
+  numeroControl   String      @unique @map("numero_control") @db.VarChar(12)
+  fecha           DateTime    @default(now()) @db.Timestamptz(6)
+  clienteId       Int         @map("cliente_id")
+  ubicacionId     Int         @map("ubicacion_id")
+  /// Copia de la tasa usada. NO es FK: debe quedar congelada.
+  tasaAplicada    Decimal     @map("tasa_aplicada") @db.Decimal(14, 4)
+  totalUsd        Decimal     @map("total_usd") @db.Decimal(12, 2)
+  totalBs         Decimal     @map("total_bs") @db.Decimal(14, 2)
+  /// Suma de los pagos. Puede diferir del total (ej. 15,02 vs 15,00).
+  pagadoUsd       Decimal     @map("pagado_usd") @db.Decimal(12, 2)
+  pagadoBs        Decimal     @map("pagado_bs") @db.Decimal(14, 2)
+  estado          EstadoVenta @default(ACTIVA)
+  motivoAnulacion String?     @map("motivo_anulacion")
+  anuladaPorId    Int?        @map("anulada_por_id")
+  anuladaEn       DateTime?   @map("anulada_en") @db.Timestamptz(6)
+  usuarioId       Int         @map("usuario_id")
+
+  cliente     Cliente                @relation(fields: [clienteId], references: [id])
+  ubicacion   Ubicacion              @relation(fields: [ubicacionId], references: [id])
+  usuario     Usuario                @relation("VentaVendedor", fields: [usuarioId], references: [id])
+  anuladaPor  Usuario?               @relation("VentaAnulador", fields: [anuladaPorId], references: [id])
+  detalles    VentaDetalle[]
+  pagos       Pago[]
+  movimientos MovimientoInventario[]
+
+  @@index([fecha])
+  @@index([clienteId])
+  @@index([estado, fecha])
+  @@map("ventas")
+}
+
+model VentaDetalle {
+  id             Int     @id @default(autoincrement())
+  ventaId        Int     @map("venta_id")
+  productoId     Int     @map("producto_id")
+  /// Copias por si el producto se renombra o cambia de código después.
+  codigoProducto String  @map("codigo_producto") @db.VarChar(20)
+  nombreProducto String  @map("nombre_producto") @db.VarChar(150)
+  cantidad       Int
+  /// Precio congelado al momento de la venta.
+  precioUnitUsd  Decimal @map("precio_unit_usd") @db.Decimal(12, 2)
+  subtotalUsd    Decimal @map("subtotal_usd") @db.Decimal(12, 2)
+
+  venta    Venta    @relation(fields: [ventaId], references: [id])
+  producto Producto @relation(fields: [productoId], references: [id])
+
+  @@index([ventaId])
+  @@index([productoId])
+  @@map("venta_detalle")
+}
+
+model CuentaBancaria {
+  id             Int        @id @default(autoincrement())
+  banco          String     @db.VarChar(60)
+  /// Ej.: "Provincial Jurídico"
+  nombre         String     @unique @db.VarChar(80)
+  titular        String     @db.VarChar(150)
+  tipo           TipoCuenta
+  ultimosDigitos String?    @map("ultimos_digitos") @db.VarChar(4)
+  activo         Boolean    @default(true)
+
+  pagos Pago[]
+
+  @@map("cuentas_bancarias")
+}
+
+/// Una venta con más de un pago = venta MIXTA.
+model Pago {
+  id         Int        @id @default(autoincrement())
+  ventaId    Int        @map("venta_id")
+  metodo     MetodoPago
+  moneda     Moneda
+  /// Monto en su moneda original.
+  monto      Decimal    @db.Decimal(14, 2)
+  /// Equivalentes calculados con la tasa de la venta.
+  montoUsd   Decimal    @map("monto_usd") @db.Decimal(12, 2)
+  montoBs    Decimal    @map("monto_bs") @db.Decimal(14, 2)
+  /// Obligatoria para tarjeta, pago móvil y transferencia; null en efectivo.
+  cuentaId   Int?       @map("cuenta_id")
+  referencia String?    @db.VarChar(30)
+
+  venta  Venta           @relation(fields: [ventaId], references: [id])
+  cuenta CuentaBancaria? @relation(fields: [cuentaId], references: [id])
+
+  @@index([ventaId])
+  @@index([cuentaId])
+  @@map("pagos")
+}
+
+// -------------------------------------------------------------
+// CONTROL
+// -------------------------------------------------------------
+
+/// Generador del N° de control. Usar dentro de la transacción de la venta:
+///   SELECT ultimo_numero FROM correlativos WHERE anio = $1 FOR UPDATE;
+///   UPDATE correlativos SET ultimo_numero = ultimo_numero + 1 WHERE anio = $1;
+/// numero_control = anio || lpad(ultimo_numero::text, 4, '0')
+model Correlativo {
+  anio         Int @id
+  ultimoNumero Int @default(0) @map("ultimo_numero")
+
+  @@map("correlativos")
+}
+
+model Auditoria {
+  id           BigInt          @id @default(autoincrement())
+  tabla        String          @db.VarChar(50)
+  registroId   String          @map("registro_id") @db.VarChar(50)
+  accion       AccionAuditoria
+  datosAntes   Json?           @map("datos_antes")
+  datosDespues Json?           @map("datos_despues")
+  usuarioId    Int             @map("usuario_id")
+  fecha        DateTime        @default(now()) @db.Timestamptz(6)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+
+  @@index([tabla, registroId])
+  @@index([fecha])
+  @@map("auditoria")
+}
