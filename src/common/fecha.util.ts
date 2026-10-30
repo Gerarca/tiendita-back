@@ -46,3 +46,43 @@ export function deFechaDb(fecha: Date): string {
 export function diasEntre(desde: string, hasta: string): number {
   return Math.round((aFechaDb(hasta).getTime() - aFechaDb(desde).getTime()) / 86_400_000);
 }
+
+/** Suma (o resta) días a una fecha AAAA-MM-DD. */
+export function sumarDias(fecha: string, dias: number): string {
+  const d = aFechaDb(fecha);
+  d.setUTCDate(d.getUTCDate() + dias);
+  return deFechaDb(d);
+}
+
+/** Minutos de diferencia con UTC de una zona en un instante (Caracas = -240). */
+function desfaseMinutos(zona: string, instante: Date): number {
+  const partes = new Intl.DateTimeFormat('en-US', { timeZone: zona, timeZoneName: 'longOffset' }).formatToParts(
+    instante,
+  );
+  const nombre = partes.find((p) => p.type === 'timeZoneName')?.value ?? 'GMT';
+  const m = /GMT([+-])(\d{2}):?(\d{2})?/.exec(nombre);
+  if (!m) return 0; // "GMT" a secas = UTC
+  const signo = m[1] === '-' ? -1 : 1;
+  return signo * (Number(m[2]) * 60 + Number(m[3] ?? 0));
+}
+
+/** Instante en que empieza el día AAAA-MM-DD en la zona del negocio. */
+export function inicioDiaNegocio(fecha: string): Date {
+  const medianocheUtc = aFechaDb(fecha).getTime();
+  return new Date(medianocheUtc - desfaseMinutos(zonaHoraria(), new Date(medianocheUtc)) * 60_000);
+}
+
+/**
+ * Filtro para columnas timestamptz a partir de días del negocio.
+ * "hasta" es inclusivo: hasta=2026-01-31 incluye todo el 31 de enero.
+ */
+export function rangoDiasNegocio(desde?: string, hasta?: string): { gte?: Date; lt?: Date } | undefined {
+  if (desde && hasta && desde > hasta) {
+    throw new BadRequestException('"desde" no puede ser posterior a "hasta"');
+  }
+  if (!desde && !hasta) return undefined;
+  return {
+    ...(desde ? { gte: inicioDiaNegocio(desde) } : {}),
+    ...(hasta ? { lt: inicioDiaNegocio(sumarDias(hasta, 1)) } : {}),
+  };
+}
