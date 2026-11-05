@@ -7,7 +7,7 @@ export const FECHA_REGEX = /^\d{4}-\d{2}-\d{2}$/;
  * Zona horaria del negocio. Se lee en cada llamada (no al importar el módulo)
  * porque ConfigModule carga el .env después de que se evalúan los imports.
  */
-function zonaHoraria(): string {
+export function zonaHoraria(): string {
   return process.env.TZ_NEGOCIO ?? 'America/Caracas';
 }
 

@@ -24,7 +24,11 @@ async function bootstrap() {
 
   // Solo para desarrollo con Next en otro puerto.
   // En producción Next se servirá desde Nest y CORS no hará falta.
-  app.enableCors({ origin: config.get<string>('CORS_ORIGIN', 'http://localhost:3000') });
+  app.enableCors({
+    origin: config.get<string>('CORS_ORIGIN', 'http://localhost:3000'),
+    // Permite al frontend leer el nombre de los archivos descargados (reportes)
+    exposedHeaders: ['Content-Disposition'],
+  });
 
   const port = Number(config.get('PORT', 3001));
   await app.listen(port);

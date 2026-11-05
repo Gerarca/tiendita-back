@@ -7,6 +7,8 @@ import { ListarIngresosDto } from './dto/listar-ingresos.dto.js';
 import { RegistrarIngresoDto } from './dto/registrar-ingreso.dto.js';
 import { IngresosService } from './ingresos.service.js';
 
+/** Ingreso de material: solo administradores. */
+@Roles('ADMIN')
 @Controller('ingresos')
 export class IngresosController {
   constructor(private readonly ingresos: IngresosService) {}
@@ -29,7 +31,6 @@ export class IngresosController {
   }
 
   /** POST /api/ingresos/producto-nuevo — crea el producto y su primer ingreso */
-  @Roles('ADMIN')
   @Post('producto-nuevo')
   registrarProductoNuevo(@Body() dto: IngresoProductoNuevoDto, @UsuarioActual() usuario: UsuarioSesion) {
     return this.ingresos.registrarProductoNuevo(dto, usuario);

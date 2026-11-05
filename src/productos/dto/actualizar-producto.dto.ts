@@ -54,4 +54,9 @@ export class ActualizarProductoDto {
   @IsOptional()
   @IsBoolean()
   activo?: boolean;
+
+  /** null = usar la voz fiscal de la categoría. */
+  @IsOptional()
+  @IsInt()
+  vozFiscalId?: number | null;
 }

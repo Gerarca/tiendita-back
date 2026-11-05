@@ -51,4 +51,9 @@ export class CrearProductoDto {
   @IsInt()
   @Min(0)
   stockMinimo?: number | null;
+
+  /** Opcional: si no se indica, se usa la voz fiscal de la categoría. */
+  @IsOptional()
+  @IsInt()
+  vozFiscalId?: number | null;
 }

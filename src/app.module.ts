@@ -14,9 +14,12 @@ import { RolesGuard } from './auth/guards/roles.guard.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { ProductosModule } from './productos/productos.module.js';
 import { RegalosModule } from './regalos/regalos.module.js';
+import { ReportesModule } from './reportes/reportes.module.js';
 import { TasasModule } from './tasas/tasas.module.js';
+import { TraspasosModule } from './traspasos/traspasos.module.js';
 import { UsuariosModule } from './usuarios/usuarios.module.js';
 import { VentasModule } from './ventas/ventas.module.js';
+import { VocesModule } from './voces/voces.js';
 
 @Module({
   imports: [
@@ -36,6 +39,9 @@ import { VentasModule } from './ventas/ventas.module.js';
     CuentasModule,
     VentasModule,
     RegalosModule,
+    TraspasosModule,
+    ReportesModule,
+    VocesModule,
   ],
   providers: [
     // Orden importante: primero autentica, luego verifica rol.

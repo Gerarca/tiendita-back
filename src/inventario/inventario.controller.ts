@@ -6,6 +6,8 @@ import { AjusteInventarioDto } from './dto/ajuste-inventario.dto.js';
 import { KardexDto } from './dto/kardex.dto.js';
 import { InventarioService } from './inventario.service.js';
 
+/** Kardex y ajustes: solo administradores (el kardex muestra ventas de todos). */
+@Roles('ADMIN')
 @Controller('inventario')
 export class InventarioController {
   constructor(private readonly inventario: InventarioService) {}
@@ -17,7 +19,6 @@ export class InventarioController {
   }
 
   /** POST /api/inventario/ajustes — corrección por conteo físico */
-  @Roles('ADMIN')
   @Post('ajustes')
   ajustar(@Body() dto: AjusteInventarioDto, @UsuarioActual() usuario: UsuarioSesion) {
     return this.inventario.ajustarPorConteo(dto, usuario.id);

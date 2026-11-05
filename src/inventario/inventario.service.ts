@@ -18,11 +18,12 @@ export interface MovimientoNuevo {
   ventaId?: number;
   ingresoId?: number;
   regaloId?: number;
+  traspasoId?: number;
   nota?: string;
 }
 
 /**
- * ÚNICO punto por donde cambia el stock. Ingresos, ventas, regalos y ajustes
+ * ÚNICO punto por donde cambia el stock. Ingresos, ventas, regalos, traspasos y ajustes
  * llaman a registrarMovimiento() dentro de su propia transacción, así:
  *  - existencias y kardex nunca se desincronizan (misma transacción),
  *  - dos operaciones simultáneas sobre el mismo producto se ordenan
@@ -95,6 +96,7 @@ export class InventarioService {
         ventaId: m.ventaId,
         ingresoId: m.ingresoId,
         regaloId: m.regaloId,
+        traspasoId: m.traspasoId,
         usuarioId: m.usuarioId,
         nota: m.nota,
       },
@@ -175,7 +177,9 @@ export class InventarioService {
             ? { tipo: 'INGRESO', id: m.ingresoId }
             : m.regaloId
               ? { tipo: 'REGALO', id: m.regaloId }
-              : null,
+              : m.traspasoId
+                ? { tipo: 'TRASPASO', id: m.traspasoId }
+                : null,
         nota: m.nota,
       })),
       total,

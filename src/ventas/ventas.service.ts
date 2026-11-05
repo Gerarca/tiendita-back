@@ -17,7 +17,7 @@ import { AnularVentaDto } from './dto/anular-venta.dto.js';
 import { ListarVentasDto } from './dto/listar-ventas.dto.js';
 import { CotizarVentaDto, PagoVentaDto, RegistrarVentaDto } from './dto/registrar-venta.dto.js';
 
-const INCLUIR_VENTA = {
+export const INCLUIR_VENTA = {
   cliente: true,
   usuario: { select: { nombre: true } },
   anuladaPor: { select: { nombre: true } },
@@ -28,7 +28,7 @@ const INCLUIR_VENTA = {
   },
 } satisfies Prisma.VentaInclude;
 
-type VentaCompleta = Prisma.VentaGetPayload<{ include: typeof INCLUIR_VENTA }>;
+export type VentaCompleta = Prisma.VentaGetPayload<{ include: typeof INCLUIR_VENTA }>;
 
 const METODOS_EFECTIVO: MetodoPago[] = ['EFECTIVO_BS', 'EFECTIVO_USD'];
 
@@ -122,6 +122,9 @@ export class VentasService {
               cantidad: l.cantidad,
               precioUnitUsd: l.producto.precioUsd,
               subtotalUsd: l.subtotal,
+              // Voz fiscal congelada al vender (la del producto o, si no tiene, la de su categoría)
+              vozFiscal: (l.producto.vozFiscal ?? l.producto.categoria.vozFiscal)?.nombre ?? null,
+              exentoIva: (l.producto.vozFiscal ?? l.producto.categoria.vozFiscal)?.exentoIva ?? null,
             })),
           },
           pagos: {
@@ -153,7 +156,7 @@ export class VentasService {
       return venta.id;
     }, OPCIONES_TX);
 
-    return this.obtener(ventaId);
+    return this.obtener(ventaId, actor);
   }
 
   // =================================================================== cotizar
@@ -278,20 +281,35 @@ export class VentasService {
 
   // =================================================================== consultas
 
-  async obtener(id: number) {
-    const venta = await this.prisma.venta.findUnique({ where: { id }, include: INCLUIR_VENTA });
+  /**
+   * Un VENDEDOR solo ve sus propias ventas. Si pide una ajena se responde
+   * "no encontrada" (no se revela que existe). Sin actor = uso interno.
+   */
+  private soloPropias(actor?: UsuarioSesion): Prisma.VentaWhereInput {
+    return actor?.rol === 'VENDEDOR' ? { usuarioId: actor.id } : {};
+  }
+
+  async obtener(id: number, actor?: UsuarioSesion) {
+    const venta = await this.prisma.venta.findFirst({ where: { id, ...this.soloPropias(actor) }, include: INCLUIR_VENTA });
     if (!venta) throw new NotFoundException('Venta no encontrada');
     return this.mapear(venta);
   }
 
-  async porNumeroControl(numeroControl: string) {
-    const venta = await this.prisma.venta.findUnique({ where: { numeroControl }, include: INCLUIR_VENTA });
+  /** Venta con todos sus datos, para generar la factura en PDF. */
+  async paraFactura(id: number, actor?: UsuarioSesion): Promise<VentaCompleta> {
+    const venta = await this.prisma.venta.findFirst({ where: { id, ...this.soloPropias(actor) }, include: INCLUIR_VENTA });
+    if (!venta) throw new NotFoundException('Venta no encontrada');
+    return venta;
+  }
+
+  async porNumeroControl(numeroControl: string, actor?: UsuarioSesion) {
+    const venta = await this.prisma.venta.findFirst({ where: { numeroControl, ...this.soloPropias(actor) }, include: INCLUIR_VENTA });
     if (!venta) throw new NotFoundException(`No existe la venta N° ${numeroControl}`);
     return this.mapear(venta);
   }
 
-  async listar(q: ListarVentasDto) {
-    const condiciones: Prisma.VentaWhereInput[] = [];
+  async listar(q: ListarVentasDto, actor?: UsuarioSesion) {
+    const condiciones: Prisma.VentaWhereInput[] = [this.soloPropias(actor)];
     const rango = rangoDiasNegocio(q.desde, q.hasta);
     if (rango) condiciones.push({ fecha: rango });
     if (q.clienteId) condiciones.push({ clienteId: q.clienteId });
@@ -432,7 +450,10 @@ export class VentasService {
     cliente: PrismaService | Prisma.TransactionClient,
     pedidas: { productoId: number; cantidad: number }[],
   ) {
-    const productos = await cliente.producto.findMany({ where: { id: { in: pedidas.map((l) => l.productoId) } } });
+    const productos = await cliente.producto.findMany({
+      where: { id: { in: pedidas.map((l) => l.productoId) } },
+      include: { vozFiscal: true, categoria: { include: { vozFiscal: true } } },
+    });
     const porId = new Map(productos.map((p) => [p.id, p]));
 
     return pedidas.map((l) => {

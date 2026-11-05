@@ -5,6 +5,6 @@ import { InventarioService } from './inventario.service.js';
 @Module({
   controllers: [InventarioController],
   providers: [InventarioService],
-  exports: [InventarioService], // ingresos, ventas y regalos lo usan
+  exports: [InventarioService], // ingresos, ventas, regalos y traspasos lo usan
 })
 export class InventarioModule {}

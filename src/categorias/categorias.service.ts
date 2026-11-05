@@ -68,6 +68,7 @@ export class CategoriasService {
         padreId,
         prefijoCodigo: dto.prefijoCodigo ?? null,
         orden: dto.orden ?? 0,
+        vozFiscalId: dto.vozFiscalId ?? null,
       },
       include: { _count: { select: { productos: { where: { activo: true } } } } },
     });
@@ -112,6 +113,7 @@ export class CategoriasService {
         prefijoCodigo: dto.prefijoCodigo,
         orden: dto.orden,
         activo: dto.activo,
+        vozFiscalId: dto.vozFiscalId,
       },
       include: { _count: { select: { productos: { where: { activo: true } } } } },
     });
@@ -137,6 +139,7 @@ export class CategoriasService {
     prefijoCodigo: string | null;
     orden: number;
     activo: boolean;
+    vozFiscalId: number | null;
     _count: { productos: number };
   }) {
     return {
@@ -146,6 +149,7 @@ export class CategoriasService {
       prefijoCodigo: c.prefijoCodigo,
       orden: c.orden,
       activo: c.activo,
+      vozFiscalId: c.vozFiscalId,
       productosActivos: c._count.productos,
     };
   }

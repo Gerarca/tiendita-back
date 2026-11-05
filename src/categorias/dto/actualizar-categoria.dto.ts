@@ -23,4 +23,9 @@ export class ActualizarCategoriaDto {
   @IsOptional()
   @IsBoolean()
   activo?: boolean;
+
+  /** Voz de la máquina fiscal (null la quita). */
+  @IsOptional()
+  @IsInt()
+  vozFiscalId?: number | null;
 }

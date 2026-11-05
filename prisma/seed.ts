@@ -67,6 +67,38 @@ async function sembrarCategorias() {
   return total;
 }
 
+/**
+ * Voces de la máquina fiscal tomadas del modelo de factura de la tienda.
+ * Agrega aquí las demás voces que tenga programadas la máquina.
+ */
+const VOCES_FISCALES = [
+  { nombre: 'ALIM CASEROS', exentoIva: false },
+  { nombre: 'PULSERAS', exentoIva: false },
+  { nombre: 'PASTA', exentoIva: true },
+];
+
+/** Categoría → voz, solo las que el modelo de factura deja claras. */
+const VOZ_POR_CATEGORIA: Record<string, string> = {
+  Pasta: 'PASTA',
+  'Pulseras Denarios': 'PULSERAS',
+  Galletas: 'ALIM CASEROS',
+};
+
+async function sembrarVoces() {
+  for (const v of VOCES_FISCALES) {
+    await prisma.vozFiscal.upsert({ where: { nombre: v.nombre }, update: {}, create: v });
+  }
+  // Solo asigna si la categoría aún no tiene voz: no pisa lo que se haya cambiado después
+  for (const [categoria, voz] of Object.entries(VOZ_POR_CATEGORIA)) {
+    const vozFiscal = await prisma.vozFiscal.findUnique({ where: { nombre: voz } });
+    if (!vozFiscal) continue;
+    await prisma.categoria.updateMany({
+      where: { nombre: categoria, vozFiscalId: null },
+      data: { vozFiscalId: vozFiscal.id },
+    });
+  }
+}
+
 async function main() {
   const password = process.env.SEED_ADMIN_PASSWORD;
   if (!password || password.length < 8) {
@@ -125,6 +157,9 @@ async function main() {
   // 6. Categorías y subcategorías
   const totalCategorias = await sembrarCategorias();
 
+  // 7. Voces de la máquina fiscal (recuadro "MÁQUINA Bs." de la factura)
+  await sembrarVoces();
+
   console.log('Seed completado:');
   console.log('  - Ubicación: Tienda');
   console.log('  - Usuario: admin');
@@ -132,6 +167,7 @@ async function main() {
   console.log('  - Cuenta: Provincial Jurídico');
   console.log(`  - Correlativo: ${anio}`);
   console.log(`  - Categorías: ${totalCategorias}`);
+  console.log(`  - Voces fiscales: ${VOCES_FISCALES.map((v) => v.nombre).join(', ')}`);
 }
 
 main()

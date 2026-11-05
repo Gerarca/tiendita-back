@@ -8,9 +8,7 @@
 //  - Nada se borra: se desactiva (activo = false) o se anula (estado = ANULADA).
 //  - Prisma no soporta CHECK: las restricciones adicionales están en checks.sql.
 //
-// PENDIENTE: traspasos de material (significado sin definir).
-//  `ubicaciones` existe con una sola fila ("Tienda") para poder agregarlos
-//  más adelante sin migrar datos.
+// Traspasos de material: salida de mercancía hacia un departamento de venta.
 //
 // SUPUESTOS (revisar):
 //  - N° de control interno: AAAA + correlativo de 4 dígitos, reinicia cada año.
@@ -51,7 +49,8 @@ enum TipoMovimiento {
   ANULACION_VENTA
   REGALO
   AJUSTE
-  // PENDIENTE: TRASPASO_SALIDA, TRASPASO_ENTRADA
+  /// Salida de mercancía hacia un departamento de venta
+  TRASPASO_SALIDA
 }
 
 enum EstadoVenta {
@@ -107,6 +106,7 @@ model Usuario {
   movimientos      MovimientoInventario[]
   ingresos         Ingreso[]
   regalos          Regalo[]
+  traspasos        Traspaso[]
   tasasCambio      TasaCambio[]
   ventas           Venta[]                @relation("VentaVendedor")
   ventasAnuladas   Venta[]                @relation("VentaAnulador")
@@ -127,12 +127,15 @@ model Categoria {
   padreId       Int?    @map("padre_id")
   /// Prefijo sugerido para los códigos: PST, SLS, CAF, GLL...
   prefijoCodigo String? @map("prefijo_codigo") @db.VarChar(10)
+  /// Voz de la máquina fiscal para los productos de esta categoría
+  vozFiscalId   Int?    @map("voz_fiscal_id")
   orden         Int     @default(0)
   activo        Boolean @default(true)
 
   padre     Categoria?  @relation("Subcategorias", fields: [padreId], references: [id])
   hijas     Categoria[] @relation("Subcategorias")
   productos Producto[]
+  vozFiscal VozFiscal?  @relation(fields: [vozFiscalId], references: [id])
 
   @@unique([padreId, nombre])
   @@map("categorias")
@@ -148,6 +151,8 @@ model Producto {
   /// Precio vigente. Los cambios quedan en historial_precios.
   precioUsd     Decimal  @map("precio_usd") @db.Decimal(12, 2)
   imagenUrl     String?  @map("imagen_url") @db.VarChar(255)
+  /// Opcional: reemplaza la voz fiscal de la categoría
+  vozFiscalId   Int?     @map("voz_fiscal_id")
   stockMinimo   Int?     @map("stock_minimo")
   /// Productos de temporada (p. ej. Galletas de Navidad) se desactivan.
   activo        Boolean  @default(true)
@@ -155,11 +160,13 @@ model Producto {
   actualizadoEn DateTime @updatedAt @map("actualizado_en") @db.Timestamptz(6)
 
   categoria        Categoria              @relation(fields: [categoriaId], references: [id])
+  vozFiscal        VozFiscal?             @relation(fields: [vozFiscalId], references: [id])
   historialPrecios HistorialPrecio[]
   existencias      Existencia[]
   movimientos      MovimientoInventario[]
   ingresoDetalles  IngresoDetalle[]
   regaloDetalles   RegaloDetalle[]
+  traspasoDetalles TraspasoDetalle[]
   ventaDetalles    VentaDetalle[]
 
   @@index([categoriaId])
@@ -182,6 +189,20 @@ model HistorialPrecio {
   @@map("historial_precios")
 }
 
+/// Voces (departamentos) de la máquina fiscal: ALIM CASEROS, PULSERAS, PASTA...
+/// Alimentan el recuadro "MÁQUINA Bs." de la factura.
+model VozFiscal {
+  id        Int     @id @default(autoincrement())
+  nombre    String  @unique @db.VarChar(40)
+  exentoIva Boolean @default(false) @map("exento_iva")
+  activo    Boolean @default(true)
+
+  categorias Categoria[]
+  productos  Producto[]
+
+  @@map("voces_fiscales")
+}
+
 // -------------------------------------------------------------
 // INVENTARIO
 // -------------------------------------------------------------
@@ -196,6 +217,7 @@ model Ubicacion {
   movimientos MovimientoInventario[]
   ingresos    Ingreso[]
   regalos     Regalo[]
+  traspasos   Traspaso[]
   ventas      Venta[]
 
   @@map("ubicaciones")
@@ -228,6 +250,7 @@ model MovimientoInventario {
   ventaId         Int?           @map("venta_id")
   ingresoId       Int?           @map("ingreso_id")
   regaloId        Int?           @map("regalo_id")
+  traspasoId      Int?           @map("traspaso_id")
   fecha           DateTime       @default(now()) @db.Timestamptz(6)
   usuarioId       Int            @map("usuario_id")
   nota            String?
@@ -237,6 +260,7 @@ model MovimientoInventario {
   venta     Venta?    @relation(fields: [ventaId], references: [id])
   ingreso   Ingreso?  @relation(fields: [ingresoId], references: [id])
   regalo    Regalo?   @relation(fields: [regaloId], references: [id])
+  traspaso  Traspaso? @relation(fields: [traspasoId], references: [id])
   usuario   Usuario   @relation(fields: [usuarioId], references: [id])
 
   @@index([productoId, fecha])
@@ -244,6 +268,7 @@ model MovimientoInventario {
   @@index([ventaId])
   @@index([ingresoId])
   @@index([regaloId])
+  @@index([traspasoId])
   @@map("movimientos_inventario")
 }
 
@@ -314,6 +339,43 @@ model RegaloDetalle {
   @@index([regaloId])
   @@index([productoId])
   @@map("regalo_detalle")
+}
+
+/// Pestaña "Traspaso de material": mercancía que sale de la tienda hacia un
+/// departamento de venta. Funciona igual que un regalo (salida sin cobro).
+model Traspaso {
+  id               Int      @id @default(autoincrement())
+  fecha            DateTime @default(now()) @db.Timestamptz(6)
+  ubicacionId      Int      @map("ubicacion_id")
+  /// Departamento de venta que recibe la mercancía
+  departamento     String   @db.VarChar(150)
+  hermanaEncargada String   @map("hermana_encargada") @db.VarChar(150)
+  autorizadoPor    String?  @map("autorizado_por") @db.VarChar(100)
+  usuarioId        Int      @map("usuario_id")
+
+  ubicacion   Ubicacion              @relation(fields: [ubicacionId], references: [id])
+  usuario     Usuario                @relation(fields: [usuarioId], references: [id])
+  detalles    TraspasoDetalle[]
+  movimientos MovimientoInventario[]
+
+  @@index([fecha])
+  @@map("traspasos")
+}
+
+model TraspasoDetalle {
+  id          Int     @id @default(autoincrement())
+  traspasoId  Int     @map("traspaso_id")
+  productoId  Int     @map("producto_id")
+  cantidad    Int
+  /// Precio de venta del momento, para reportar el valor traspasado
+  valorRefUsd Decimal @map("valor_ref_usd") @db.Decimal(12, 2)
+
+  traspaso Traspaso @relation(fields: [traspasoId], references: [id])
+  producto Producto @relation(fields: [productoId], references: [id])
+
+  @@index([traspasoId])
+  @@index([productoId])
+  @@map("traspaso_detalle")
 }
 
 // -------------------------------------------------------------
@@ -397,6 +459,9 @@ model VentaDetalle {
   /// Precio congelado al momento de la venta.
   precioUnitUsd  Decimal @map("precio_unit_usd") @db.Decimal(12, 2)
   subtotalUsd    Decimal @map("subtotal_usd") @db.Decimal(12, 2)
+  /// Copia de la voz fiscal al momento de la venta (null = sin clasificar)
+  vozFiscal      String? @map("voz_fiscal") @db.VarChar(40)
+  exentoIva      Boolean? @map("exento_iva")
 
   venta    Venta    @relation(fields: [ventaId], references: [id])
   producto Producto @relation(fields: [productoId], references: [id])

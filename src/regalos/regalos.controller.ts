@@ -6,6 +6,8 @@ import { ListarRegalosDto } from './dto/listar-regalos.dto.js';
 import { RegistrarRegaloDto } from './dto/registrar-regalo.dto.js';
 import { RegalosService } from './regalos.service.js';
 
+/** Solo administradores (registrar y consultar). */
+@Roles('ADMIN')
 @Controller('regalos')
 export class RegalosController {
   constructor(private readonly regalos: RegalosService) {}
@@ -22,7 +24,6 @@ export class RegalosController {
   }
 
   /** Solo ADMIN: es una salida de mercancía sin cobro y, por ahora, no se puede anular. */
-  @Roles('ADMIN')
   @Post()
   registrar(@Body() dto: RegistrarRegaloDto, @UsuarioActual() usuario: UsuarioSesion) {
     return this.regalos.registrar(dto, usuario);

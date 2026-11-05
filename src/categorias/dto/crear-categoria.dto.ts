@@ -22,4 +22,9 @@ export class CrearCategoriaDto {
   @IsInt()
   @Min(0)
   orden?: number;
+
+  /** Voz de la máquina fiscal (null la quita). */
+  @IsOptional()
+  @IsInt()
+  vozFiscalId?: number | null;
 }

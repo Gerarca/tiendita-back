@@ -12,8 +12,14 @@ import { borrarImagen, detectarTipoImagen, directorioImagenes, URL_IMAGENES } fr
 
 const INCLUIR = {
   categoria: {
-    select: { id: true, nombre: true, padre: { select: { id: true, nombre: true } } },
+    select: {
+      id: true,
+      nombre: true,
+      padre: { select: { id: true, nombre: true } },
+      vozFiscal: { select: { id: true, nombre: true, exentoIva: true } },
+    },
   },
+  vozFiscal: { select: { id: true, nombre: true, exentoIva: true } },
   existencias: { select: { cantidad: true } },
 } satisfies Prisma.ProductoInclude;
 
@@ -137,6 +143,7 @@ export class ProductosService {
         categoriaId: dto.categoriaId,
         precioUsd: new Prisma.Decimal(dto.precioUsd.toFixed(2)),
         stockMinimo: dto.stockMinimo ?? null,
+        vozFiscalId: dto.vozFiscalId ?? null,
       },
     });
   }
@@ -183,6 +190,7 @@ export class ProductosService {
             precioUsd: cambiaPrecio ? nuevoPrecio : undefined,
             stockMinimo: dto.stockMinimo,
             activo: dto.activo,
+            vozFiscalId: dto.vozFiscalId,
           },
           include: INCLUIR,
         });
@@ -288,6 +296,13 @@ export class ProductosService {
       stockMinimo: p.stockMinimo,
       stockBajo: p.stockMinimo !== null && stock <= p.stockMinimo,
       activo: p.activo,
+      // La voz propia del producto manda; si no tiene, la de su categoría
+      vozFiscalId: p.vozFiscalId,
+      vozFiscal: p.vozFiscal
+        ? { ...p.vozFiscal, origen: 'producto' as const }
+        : p.categoria.vozFiscal
+          ? { ...p.categoria.vozFiscal, origen: 'categoria' as const }
+          : null,
       categoria: {
         id: p.categoria.id,
         nombre: p.categoria.nombre,
