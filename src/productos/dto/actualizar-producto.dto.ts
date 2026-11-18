@@ -59,4 +59,9 @@ export class ActualizarProductoDto {
   @IsOptional()
   @IsInt()
   vozFiscalId?: number | null;
+
+  /** Si lleva IVA. Al crear, por defecto false. */
+  @IsOptional()
+  @IsBoolean()
+  aplicaIva?: boolean;
 }

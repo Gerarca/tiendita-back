@@ -41,7 +41,10 @@ export class ReportesService {
       include: {
         cliente: true,
         usuario: { select: { nombre: true } },
-        detalles: { orderBy: { id: 'asc' } },
+        detalles: {
+          orderBy: { id: 'asc' },
+          include: { producto: { select: { categoria: { select: { nombre: true } } } } },
+        },
         pagos: { orderBy: { id: 'asc' }, include: { cuenta: { select: { nombre: true } } } },
       },
     });
@@ -145,10 +148,16 @@ export class ReportesService {
     const pagosActivos = activas.flatMap((v) => v.pagos);
 
     // ---------- Hoja 3: productos vendidos ----------
-    const porProducto = new Map<string, { codigo: string; nombre: string; unidades: number; total: Prisma.Decimal }>();
+    const porProducto = new Map<string, { codigo: string; nombre: string; categoria: string; unidades: number; total: Prisma.Decimal }>();
     for (const v of activas) {
       for (const d of v.detalles) {
-        const actual = porProducto.get(d.codigoProducto) ?? { codigo: d.codigoProducto, nombre: d.nombreProducto, unidades: 0, total: D(0) };
+        const actual = porProducto.get(d.codigoProducto) ?? {
+          codigo: d.codigoProducto,
+          nombre: d.nombreProducto,
+          categoria: d.producto.categoria.nombre,
+          unidades: 0,
+          total: D(0),
+        };
         actual.unidades += d.cantidad;
         actual.total = actual.total.plus(d.subtotalUsd);
         porProducto.set(d.codigoProducto, actual);
@@ -166,7 +175,6 @@ export class ReportesService {
 
     return {
       ...this.base(p, u, `VENTAS DE LA TIENDA - ${p.etiqueta.toUpperCase()} - PRECIOS VALORADOS EN DÓLARES`, `ventas-${p.sufijo}`),
-      tamanoPagina: 'LEGAL',
       fuentePdf: 6.5,
       resumen,
       hojas: [
@@ -214,10 +222,11 @@ export class ReportesService {
           columnas: [
             { clave: 'codigo', titulo: 'Código', tipo: 'texto', ancho: 12 },
             { clave: 'producto', titulo: 'Producto', tipo: 'texto', ancho: 36, expandir: true },
+            { clave: 'categoria', titulo: 'Categoría', tipo: 'texto', ancho: 18 },
             { clave: 'unidades', titulo: 'Unidades', tipo: 'entero', ancho: 10 },
             { clave: 'totalUsd', titulo: 'Total $', tipo: 'usd' },
           ],
-          filas: productos.map((x) => ({ codigo: x.codigo, producto: x.nombre, unidades: x.unidades, totalUsd: num(x.total) })),
+          filas: productos.map((x) => ({ codigo: x.codigo, producto: x.nombre, categoria: x.categoria, unidades: x.unidades, totalUsd: num(x.total) })),
           totales: {
             producto: 'TOTAL',
             unidades: productos.reduce((s, x) => s + x.unidades, 0),
@@ -333,7 +342,6 @@ export class ReportesService {
 
     return {
       ...this.base(p, u, encabezado, `pagos-${slug}-${p.sufijo}`),
-      tamanoPagina: 'LEGAL',
       fuentePdf: 6,
       resumen: [
         { etiqueta: 'Ventas', valor: String(ventas.length) },
@@ -589,7 +597,8 @@ export class ReportesService {
       filas.push({
         codigo: prod.codigo,
         producto: prod.nombre + (prod.activo ? '' : ' (inactivo)'),
-        categoria: prod.categoria.padre ? `${prod.categoria.padre.nombre} / ${prod.categoria.nombre}` : prod.categoria.nombre,
+        // Solo la categoría del producto (Pasta, Galletas...), sin la principal
+        categoria: prod.categoria.nombre,
         precioUsd: num(prod.precioUsd),
         inicial,
         ingresos,
@@ -627,7 +636,7 @@ export class ReportesService {
           columnas: [
             { clave: 'codigo', titulo: 'Código', tipo: 'texto', ancho: 11 },
             { clave: 'producto', titulo: 'Producto', tipo: 'texto', ancho: 32, expandir: true },
-            { clave: 'categoria', titulo: 'Categoría', tipo: 'texto', ancho: 22 },
+            { clave: 'categoria', titulo: 'Categoría', tipo: 'texto', ancho: 16 },
             { clave: 'precioUsd', titulo: 'Precio $', tipo: 'usd' },
             { clave: 'inicial', titulo: 'Stock inicial', tipo: 'entero', ancho: 10 },
             { clave: 'ingresos', titulo: 'Ingresos', tipo: 'entero', ancho: 10 },

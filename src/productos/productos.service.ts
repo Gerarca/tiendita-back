@@ -144,6 +144,7 @@ export class ProductosService {
         precioUsd: new Prisma.Decimal(dto.precioUsd.toFixed(2)),
         stockMinimo: dto.stockMinimo ?? null,
         vozFiscalId: dto.vozFiscalId ?? null,
+        aplicaIva: dto.aplicaIva ?? false,
       },
     });
   }
@@ -191,6 +192,7 @@ export class ProductosService {
             stockMinimo: dto.stockMinimo,
             activo: dto.activo,
             vozFiscalId: dto.vozFiscalId,
+            aplicaIva: dto.aplicaIva,
           },
           include: INCLUIR,
         });
@@ -298,6 +300,7 @@ export class ProductosService {
       activo: p.activo,
       // La voz propia del producto manda; si no tiene, la de su categoría
       vozFiscalId: p.vozFiscalId,
+      aplicaIva: p.aplicaIva,
       vozFiscal: p.vozFiscal
         ? { ...p.vozFiscal, origen: 'producto' as const }
         : p.categoria.vozFiscal

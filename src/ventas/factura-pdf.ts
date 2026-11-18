@@ -13,14 +13,18 @@ import type { VentaCompleta } from './ventas.service.js';
 const GRIS = '#D9D9D9';
 /** A5 horizontal en puntos (210 × 148 mm). */
 const PAGINA = { ancho: 595.28, alto: 419.53 };
-const ANCHO_FACTURA = 384;
-const ANCHO_MAQUINA = 176;
-const SEPARACION = 8;
-/** Mismo margen a ambos lados: el bloque factura + recuadro queda centrado. */
-const margenLateral = (PAGINA.ancho - ANCHO_FACTURA - SEPARACION - ANCHO_MAQUINA) / 2;
+/**
+ * Márgenes pedidos por la tienda: más amplio a la izquierda (≈ 2,4 cm) y
+ * ≈ 1,7 cm a la derecha. El contenido ocupa el espacio entre ambos.
+ */
+const MARGEN_IZQUIERDO = 68;
+const MARGEN_DERECHO = 48;
+const SEPARACION = 6;
+const ANCHO_MAQUINA = 162;
+const ANCHO_FACTURA = PAGINA.ancho - MARGEN_IZQUIERDO - MARGEN_DERECHO - SEPARACION - ANCHO_MAQUINA;
 /** Alto aproximado de la factura (medido): fijo + una fila por producto. */
-const ALTO_BASE = 174;
-const ALTO_FILA = 11.15;
+const ALTO_BASE = 171;
+const ALTO_FILA = 10.6;
 
 /** Filas de productos que se dibujan aunque estén vacías (media hoja A5). */
 const FILAS_MINIMAS = 8;
@@ -84,7 +88,7 @@ function cuadroMaquina(v: VentaCompleta): Content {
     totalExento = totalExento.plus(exento);
     totalGeneral = totalGeneral.plus(total);
     return [
-      { text: nombre, fontSize: 6, noWrap: true },
+      { text: nombre, fontSize: 5.5 },
       { text: conIva.gt(0) ? n2(conIva) : '', alignment: 'right' },
       { text: exento.gt(0) ? n2(exento) : '', alignment: 'right' },
       { text: n2(total), alignment: 'right' },
@@ -96,7 +100,7 @@ function cuadroMaquina(v: VentaCompleta): Content {
     stack: [
       {
         table: {
-          widths: ['*', 34, 34, 38],
+          widths: ['*', 29, 29, 33],
           body: [
             [{ text: 'MÁQUINA Bs.', ...gris, colSpan: 2 }, {}, { text: '', fillColor: GRIS }, { text: '', fillColor: GRIS }],
             [
@@ -136,11 +140,11 @@ export async function generarFacturaPdf(v: VentaCompleta, titulo: string): Promi
     table: {
       widths: ['*'],
       body: [
-        [{ text: titulo, bold: true, fontSize: 11.5, alignment: 'center', fillColor: GRIS, margin: [0, 2, 0, 2] }],
+        [{ text: titulo, bold: true, fontSize: 11, alignment: 'center', fillColor: GRIS, margin: [0, 2, 0, 2] }],
         [
           {
             table: {
-              widths: [40, '*', 70, 66],
+              widths: [38, '*', 64, 58],
               body: [
                 [etiqueta('FECHA:'), fmtFechaHora(v.fecha), etiqueta('VENTA Nº'), { text: v.numeroControl, bold: true, alignment: 'center' }],
                 [etiqueta('NOMBRE:'), v.cliente.nombre, etiqueta('DÓLAR DEL DÍA:'), { text: `${n2(v.tasaAplicada)} Bs`, bold: true, alignment: 'center' }],
@@ -190,7 +194,7 @@ export async function generarFacturaPdf(v: VentaCompleta, titulo: string): Promi
   while (filasProductos.length < FILAS_MINIMAS) filasProductos.push([' ', '', '', '', '']);
 
   const productos: Content = {
-    table: { widths: [44, '*', 26, 40, 44], headerRows: 1, body: [cabeceraProductos, ...filasProductos] },
+    table: { widths: [40, '*', 24, 36, 40], headerRows: 1, body: [cabeceraProductos, ...filasProductos] },
     layout: conBordes,
     margin: [0, -0.7, 0, 0],
   };
@@ -228,7 +232,7 @@ export async function generarFacturaPdf(v: VentaCompleta, titulo: string): Promi
     ]);
   }
   const pagos: Content = {
-    table: { widths: [36, 34, 42, 46, '*', 46, 46], body: cuerpoPagos },
+    table: { widths: [38, 30, 38, 42, '*', 40, 40], body: cuerpoPagos },
     layout: conBordes,
     margin: [0, 5, 0, 0],
   };
@@ -239,7 +243,7 @@ export async function generarFacturaPdf(v: VentaCompleta, titulo: string): Promi
   const chico = { fontSize: 6, bold: true };
   const resumen: Content = {
     table: {
-      widths: [46, 40, 64, 48, 42, 36],
+      widths: [48, 32, 68, 40, 46, 32],
       body: [
         [
           { text: 'DIVISAS (Bs):', ...chico },
@@ -287,8 +291,8 @@ export async function generarFacturaPdf(v: VentaCompleta, titulo: string): Promi
     // Media hoja: A5 horizontal (210 × 148 mm)
     pageSize: 'A5',
     pageOrientation: 'landscape',
-    pageMargins: [margenLateral, margenSuperior, margenLateral, 10],
-    defaultStyle: { font: 'Helvetica', fontSize: 7.8 },
+    pageMargins: [MARGEN_IZQUIERDO, margenSuperior, MARGEN_DERECHO, 10],
+    defaultStyle: { font: 'Helvetica', fontSize: 7.2 },
     info: { title: `Venta ${v.numeroControl}`, author: titulo },
     ...(anulada ? { watermark: { text: 'ANULADA', color: '#B3412E', opacity: 0.25, bold: true } } : {}),
     content: [

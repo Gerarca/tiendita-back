@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsInt,
   IsNotEmpty,
   IsNumber,
@@ -56,4 +57,9 @@ export class CrearProductoDto {
   @IsOptional()
   @IsInt()
   vozFiscalId?: number | null;
+
+  /** Si lleva IVA. Al crear, por defecto false. */
+  @IsOptional()
+  @IsBoolean()
+  aplicaIva?: boolean;
 }

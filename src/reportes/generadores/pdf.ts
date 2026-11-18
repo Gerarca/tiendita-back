@@ -32,6 +32,9 @@ export function crearPdf(documento: TDocumentDefinitions): Promise<Buffer> {
   return pdfmake.createPdf(documento).getBuffer();
 }
 
+/** Hoja de los reportes impresos: 8,5" × 13" (oficio), en puntos (72 por pulgada). */
+export const HOJA_REPORTES = { width: 8.5 * 72, height: 13 * 72 };
+
 const COLOR_CABECERA = '#7B4A2D';
 const COLOR_GRUPO = '#FBEFE6';
 
@@ -157,7 +160,7 @@ export async function generarPdf(r: Reporte): Promise<Buffer> {
   });
 
   const documento: TDocumentDefinitions = {
-    pageSize: r.tamanoPagina ?? 'LETTER',
+    pageSize: HOJA_REPORTES,
     pageOrientation: r.orientacion,
     pageMargins: [28, 28, 28, 40],
     defaultStyle: { font: 'Helvetica', fontSize: r.fuentePdf ?? 7 },

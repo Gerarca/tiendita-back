@@ -75,6 +75,8 @@ const VOCES_FISCALES = [
   { nombre: 'ALIM CASEROS', exentoIva: false },
   { nombre: 'PULSERAS', exentoIva: false },
   { nombre: 'PASTA', exentoIva: true },
+  // SUPUESTO: con IVA. Si en la máquina fiscal es exenta, cambiar a true.
+  { nombre: 'ART. RELIGIOSOS', exentoIva: false },
 ];
 
 /** Categoría → voz, solo las que el modelo de factura deja claras. */
@@ -82,6 +84,10 @@ const VOZ_POR_CATEGORIA: Record<string, string> = {
   Pasta: 'PASTA',
   'Pulseras Denarios': 'PULSERAS',
   Galletas: 'ALIM CASEROS',
+  Medallas: 'ART. RELIGIOSOS',
+  Rosarios: 'ART. RELIGIOSOS',
+  Decenas: 'ART. RELIGIOSOS',
+  Cruces: 'ART. RELIGIOSOS',
 };
 
 async function sembrarVoces() {

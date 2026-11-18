@@ -122,9 +122,10 @@ export class VentasService {
               cantidad: l.cantidad,
               precioUnitUsd: l.producto.precioUsd,
               subtotalUsd: l.subtotal,
-              // Voz fiscal congelada al vender (la del producto o, si no tiene, la de su categoría)
+              // Copias al vender: el departamento de la máquina fiscal (voz del producto o de
+              // su categoría) y si el producto lleva IVA (casilla "Aplica IVA" del producto)
               vozFiscal: (l.producto.vozFiscal ?? l.producto.categoria.vozFiscal)?.nombre ?? null,
-              exentoIva: (l.producto.vozFiscal ?? l.producto.categoria.vozFiscal)?.exentoIva ?? null,
+              exentoIva: !l.producto.aplicaIva,
             })),
           },
           pagos: {

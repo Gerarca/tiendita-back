@@ -61,8 +61,6 @@ export interface Reporte {
   /** Nombre del archivo sin extensión. */
   archivo: string;
   orientacion: 'portrait' | 'landscape';
-  /** Hojas con muchas columnas usan tamaño oficio en el PDF. */
-  tamanoPagina?: 'LETTER' | 'LEGAL';
   /** Tamaño de letra del PDF (por defecto 7). */
   fuentePdf?: number;
 }

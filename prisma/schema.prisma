@@ -153,6 +153,8 @@ model Producto {
   imagenUrl     String?  @map("imagen_url") @db.VarChar(255)
   /// Opcional: reemplaza la voz fiscal de la categoría
   vozFiscalId   Int?     @map("voz_fiscal_id")
+  /// Si el producto lleva IVA (columna "CON IVA" del recuadro MÁQUINA Bs.). Por defecto, no.
+  aplicaIva     Boolean  @default(false) @map("aplica_iva")
   stockMinimo   Int?     @map("stock_minimo")
   /// Productos de temporada (p. ej. Galletas de Navidad) se desactivan.
   activo        Boolean  @default(true)
@@ -190,7 +192,9 @@ model HistorialPrecio {
 }
 
 /// Voces (departamentos) de la máquina fiscal: ALIM CASEROS, PULSERAS, PASTA...
-/// Alimentan el recuadro "MÁQUINA Bs." de la factura.
+/// Dan el nombre de cada fila del recuadro "MÁQUINA Bs." de la factura.
+/// El IVA ya no se toma de aquí sino de cada producto (Producto.aplicaIva);
+/// exentoIva solo se usó para migrar los productos que ya existían.
 model VozFiscal {
   id        Int     @id @default(autoincrement())
   nombre    String  @unique @db.VarChar(40)
